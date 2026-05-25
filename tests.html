@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Batta UNO - Tests</title>
+  <style>
+    body { font-family: monospace; background: #1a1a2e; color: #e8e8e8; padding: 20px; max-width: 800px; margin: 0 auto; }
+    h1 { color: #e94560; }
+    h2 { color: #3498db; margin-top: 24px; }
+    .test { padding: 8px 12px; margin: 4px 0; border-radius: 4px; }
+    .pass { background: rgba(46,204,113,0.15); border-left: 3px solid #2ecc71; }
+    .fail { background: rgba(231,76,60,0.15); border-left: 3px solid #e74c3c; }
+    .summary { margin-top: 20px; padding: 12px; background: rgba(255,255,255,0.05); border-radius: 8px; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+    .badge-pass { background: #2ecc71; color: #000; }
+    .badge-fail { background: #e74c3c; color: #fff; }
+  </style>
+</head>
+<body>
+  <h1>🦆 Batta UNO - Test Suite</h1>
+  <div id="results"></div>
+  <div class="summary" id="summary">Running tests...</div>
+
+  <script type="module">
+    import { COLORS, CARD_TYPES, GAME_PHASES, EVENTS } from './assets/js/core/Constants.js';
+    import { eventBus } from './assets/js/core/EventSystem.js';
+    import { Card } from './assets/js/game/Card.js';
+    import { Deck } from './assets/js/game/Deck.js';
+    import { GameRules } from './assets/js/game/GameRules.js';
+    import { GameState } from './assets/js/game/GameState.js';
+    import { Scoring } from './assets/js/game/Scoring.js';
+    import { BotAI } from './assets/js/game/BotAI.js';
+
+    const results = document.getElementById('results');
+    let passed = 0;
+    let failed = 0;
+    const tests = [];
+
+    function test(name, fn) {
+      tests.push({ name, fn });
+    }
+
+    function assert(condition, message) {
+      if (!condition) throw new Error(message || 'Assertion failed');
+    }
+
+    function assertEqual(actual, expected, msg) {
+      if (actual !== expected) {
+        throw new Error(`${msg || ''} Expected ${expected}, got ${actual}`);
+      }
+    }
+
+    async function runTests() {
+      for (const { name, fn } of tests) {
+        try {
+          await fn();
+          passed++;
+          results.innerHTML += `<div class="test pass">✓ ${name}</div>`;
+        } catch (err) {
+          failed++;
+          results.innerHTML += `<div class="test fail">✗ ${name}: ${err.message}</div>`;
+        }
+      }
+      document.getElementById('summary').innerHTML = `
+        <strong>Results:</strong> 
+        <span class="badge badge-pass">${passed} passed</span> 
+        ${failed ? `<span class="badge badge-fail">${failed} failed</span>` : ''}
+        | Total: ${tests.length}
+      `;
+    }
+
+    // ============================
+    // Card Tests
+    // ============================
+    test('Card - Create number card', () => {
+      const card = new Card(CARD_TYPES.NUMBER, 'red', 5);
+      assertEqual(card.type, CARD_TYPES.NUMBER);
+      assertEqual(card.color, 'red');
+      assertEqual(card.value, 5);
+      assertEqual(card.isWild, false);
+      assertEqual(card.score, 5);
+    });
+
+    test('Card - Create wild card', () => {
+      const card = new Card(CARD_TYPES.WILD);
+      assertEqual(card.type, CARD_TYPES.WILD);
+      assertEqual(card.color, null);
+      assertEqual(card.isWild, true);
+      assertEqual(card.score, 50);
+    });
+
+    test('Card - Create wild draw four', () => {
+      const card = new Card(CARD_TYPES.WILD_DRAW_FOUR);
+      assertEqual(card.type, CARD_TYPES.WILD_DRAW_FOUR);
+      assertEqual(card.isWild, true);
+      assertEqual(card.score, 50);
+    });
+
+    test('Card - Create skip card', () => {
+      const card = new Card(CARD_TYPES.SKIP, 'blue');
+      assertEqual(card.type, CARD_TYPES.SKIP);
+      assertEqual(card.score, 20);
+    });
+
+    test('Card - Create reverse card', () => {
+      const card = new Card(CARD_TYPES.REVERSE, 'green');
+      assertEqual(card.type, CARD_TYPES.REVERSE);
+      assertEqual(card.score, 20);
+    });
+
+    test('Card - Create draw two card', () => {
+      const card = new Card(CARD_TYPES.DRAW_TWO, 'yellow');
+      assertEqual(card.type, CARD_TYPES.DRAW_TWO);
+      assertEqual(card.score, 20);
+    });
+
+    test('Card - Matches same color', () => {
+      const card1 = new Card(CARD_TYPES.NUMBER, 'red', 5);
+      const card2 = new Card(CARD_TYPES.NUMBER, 'red', 3);
+      assert(card1.matches(card2));
+    });
+
+    test('Card - Matches same number', () => {
+      const card1 = new Card(CARD_TYPES.NUMBER, 'red', 5);
+      const card2 = new Card(CARD_TYPES.NUMBER, 'blue', 5);
+      assert(card1.matches(card2));
+    });
+
+    test('Card - Matches same type (special)', () => {
+      const card1 = new Card(CARD_TYPES.SKIP, 'red');
+      const card2 = new Card(CARD_TYPES.SKIP, 'blue');
+      assert(card1.matches(card2));
+    });
+
+    test('Card - Wild matches anything', () => {
+      const wild = new Card(CARD_TYPES.WILD);
+      const card = new Card(CARD_TYPES.NUMBER, 'red', 5);
+      assert(wild.matches(card));
+    });
+
+    test('Card - Serialize and deserialize', () => {
+      const original = new Card(CARD_TYPES.NUMBER, 'green', 7);
+      const data = original.serialize();
+      const restored = Card.deserialize(data);
+      assertEqual(restored.id, original.id);
+      assertEqual(restored.type, original.type);
+      assertEqual(restored.color, original.color);
+      assertEqual(restored.value, original.value);
+      assertEqual(restored.isWild, original.isWild);
+    });
+
+    test('Card - Display name', () => {
+      const card = new Card(CARD_TYPES.NUMBER, 'red', 3);
+      assert(card.displayName.includes('3'));
+    });
+
+    // ============================
+    // Deck Tests
+    // ============================
+    test('Deck - Build full deck', () => {
+      const deck = new Deck().build();
+      assertEqual(deck.remaining, 108);
+    });
+
+    test('Deck - Shuffle changes order', () => {
+      const deck1 = new Deck().build();
+      const deck2 = new Deck().build();
+      const order1 = deck1._cards.map(c => c.id).join(',');
+      deck2.shuffle();
+      const order2 = deck2._cards.map(c => c.id).join(',');
+      assert(order1 !== order2, 'Shuffle should change card order');
+    });
+
+    test('Deck - Draw one card', () => {
+      const deck = new Deck().build();
+      const card = deck.drawOne();
+      assert(card instanceof Card);
+      assertEqual(deck.remaining, 107);
+    });
+
+    test('Deck - Draw multiple cards', () => {
+      const deck = new Deck().build();
+      const cards = deck.draw(7);
+      assertEqual(cards.length, 7);
+      assertEqual(deck.remaining, 101);
+    });
+
+    test('Deck - Discard and recycle', () => {
+      const deck = new Deck().build();
+      const cards = deck.draw(107);
+      assertEqual(deck.remaining, 1);
+      deck.discard(cards[0]);
+      assertEqual(deck._discardPile.length, 1);
+      const drawn = deck.draw(5);
+      assert(drawn.length > 0, 'Should recycle discard pile');
+    });
+
+    test('Deck - Serialize and deserialize', () => {
+      const deck = new Deck().build().shuffle();
+      deck.draw(5);
+      const data = deck.serialize();
+      const restored = Deck.deserialize(data);
+      assertEqual(restored.remaining, deck.remaining);
+      assertEqual(restored._discardPile.length, deck._discardPile.length);
+    });
+
+    // ============================
+    // GameRules Tests
+    // ============================
+    test('GameRules - canPlayCard same color', () => {
+      assert(GameRules.canPlayCard(
+        new Card(CARD_TYPES.NUMBER, 'red', 3),
+        new Card(CARD_TYPES.NUMBER, 'red', 7),
+        null, []
+      ));
+    });
+
+    test('GameRules - canPlayCard same number', () => {
+      assert(GameRules.canPlayCard(
+        new Card(CARD_TYPES.NUMBER, 'blue', 5),
+        new Card(CARD_TYPES.NUMBER, 'red', 5),
+        null, []
+      ));
+    });
+
+    test('GameRules - canPlayCard wild always works', () => {
+      assert(GameRules.canPlayCard(
+        new Card(CARD_TYPES.WILD),
+        new Card(CARD_TYPES.NUMBER, 'red', 5),
+        null, []
+      ));
+    });
+
+    test('GameRules - canPlayCard same special type', () => {
+      assert(GameRules.canPlayCard(
+        new Card(CARD_TYPES.SKIP, 'green'),
+        new Card(CARD_TYPES.SKIP, 'red'),
+        null, []
+      ));
+    });
+
+    test('GameRules - canPlayCard different color and number', () => {
+      assert(!GameRules.canPlayCard(
+        new Card(CARD_TYPES.NUMBER, 'blue', 3),
+        new Card(CARD_TYPES.NUMBER, 'red', 7),
+        null, []
+      ));
+    });
+
+    test('GameRules - hasPlayableCard finds wild', () => {
+      const hand = [new Card(CARD_TYPES.NUMBER, 'blue', 3), new Card(CARD_TYPES.WILD)];
+      assert(GameRules.hasPlayableCard(hand, new Card(CARD_TYPES.NUMBER, 'red', 7), null));
+    });
+
+    test('GameRules - getPlayableCards returns correct count', () => {
+      const hand = [
+        new Card(CARD_TYPES.NUMBER, 'red', 3),
+        new Card(CARD_TYPES.NUMBER, 'blue', 5),
+        new Card(CARD_TYPES.SKIP, 'red')
+      ];
+      const playable = GameRules.getPlayableCards(hand, new Card(CARD_TYPES.NUMBER, 'red', 7), null);
+      assertEqual(playable.length, 2);
+    });
+
+    test('GameRules - calculateNextPlayer forward', () => {
+      assertEqual(GameRules.calculateNextPlayer(0, 1, 4), 1);
+      assertEqual(GameRules.calculateNextPlayer(3, 1, 4), 0);
+    });
+
+    test('GameRules - calculateNextPlayer backward', () => {
+      assertEqual(GameRules.calculateNextPlayer(0, -1, 4), 3);
+      assertEqual(GameRules.calculateNextPlayer(3, -1, 4), 2);
+    });
+
+    test('GameRules - getDirectionAfterReverse 4 players', () => {
+      assertEqual(GameRules.getDirectionAfterReverse(1, 4), -1);
+      assertEqual(GameRules.getDirectionAfterReverse(-1, 4), 1);
+    });
+
+    test('GameRules - getDirectionAfterReverse 2 players (no change)', () => {
+      assertEqual(GameRules.getDirectionAfterReverse(1, 2), 1);
+    });
+
+    test('GameRules - getDrawCount for +2', () => {
+      assertEqual(GameRules.getDrawCount(new Card(CARD_TYPES.DRAW_TWO, 'red')), 2);
+    });
+
+    test('GameRules - getDrawCount for +4', () => {
+      assertEqual(GameRules.getDrawCount(new Card(CARD_TYPES.WILD_DRAW_FOUR)), 4);
+    });
+
+    test('GameRules - calculateScore for hand', () => {
+      const hand = [
+        new Card(CARD_TYPES.NUMBER, 'red', 5),
+        new Card(CARD_TYPES.SKIP, 'blue'),
+        new Card(CARD_TYPES.WILD)
+      ];
+      assertEqual(GameRules.calculateScore(hand), 5 + 20 + 50);
+    });
+
+    // ============================
+    // GameState Tests
+    // ============================
+    test('GameState - init creates player', () => {
+      const state = new GameState();
+      state.init('p1', 'Alice');
+      assertEqual(state.players.length, 1);
+      assertEqual(state.players[0].name, 'Alice');
+      assert(state.players[0].isHost);
+    });
+
+    test('GameState - addPlayer adds to lobby', () => {
+      const state = new GameState();
+      state.init('p1', 'Alice');
+      state.addPlayer('p2', 'Bob');
+      assertEqual(state.players.length, 2);
+    });
+
+    test('GameState - addPlayer duplicates rejected', () => {
+      const state = new GameState();
+      state.init('p1', 'Alice');
+      assert(!state.addPlayer('p1', 'Alice2'));
+    });
+
+    test('GameState - removePlayer works', () => {
+      const state = new GameState();
+      state.init('p1', 'Alice');
+      state.addPlayer('p2', 'Bob');
+      state.removePlayer('p2');
+      assertEqual(state.players.length, 1);
+    });
+
+    test('GameState - canStart requires 2+ players and all ready', () => {
+      const state = new GameState();
+      state.init('p1', 'Alice');
+      state.addPlayer('p2', 'Bob');
+      state.setReady('p1', true);
+      assert(!state.canStart());
+      state.setReady('p2', true);
+      assert(state.canStart());
+    });
+
+    test('GameState - start deals cards', () => {
+      const state = new GameState();
+      state.init('p1', 'Alice');
+      state.addPlayer('p2', 'Bob');
+      state.setReady('p1', true);
+      state.setReady('p2', true);
+      state.start();
+      assertEqual(state.phase, GAME_PHASES.PLAYING);
+      assert(state.players[0].cards.length === 7);
+      assert(state.players[1].cards.length === 7);
+      assert(state.currentCard !== null);
+      assert(!state.currentCard.isWild);
+    });
+
+    test('GameState - playCard valid move', () => {
+      const state = new GameState();
+      state.init('p1', 'Alice');
+      state.addPlayer('p2', 'Bob');
+      state.setReady('p1', true);
+      state.setReady('p2', true);
+      state.start();
+
+      const currentPlayer = state.players[state.currentPlayerIndex];
+      const playable = GameRules.getPlayableCards(currentPlayer.cards, state.currentCard, state.selectedColor);
+      assert(playable.length > 0, 'Should have at least one playable card');
+      const card = playable[0];
+      const color = card.isWild ? 'red' : null;
+      const result = state.playCard(currentPlayer.id, card.id, color);
+      assert(result.success, `Play card should succeed: ${result.reason}`);
+    });
+
+    test('GameState - playCard wrong player rejected', () => {
+      const state = new GameState();
+      state.init('p1', 'Alice');
+      state.addPlayer('p2', 'Bob');
+      state.setReady('p1', true);
+      state.setReady('p2', true);
+      state.start();
+
+      const wrongPlayer = state.players.find(p => p.id !== state.players[state.currentPlayerIndex].id);
+      const card = wrongPlayer.cards[0];
+      const result = state.playCard(wrongPlayer.id, card.id, null);
+      assert(!result.success);
+      assertEqual(result.reason, 'not_your_turn');
+    });
+
+    test('GameState - playCard with wild requires color', () => {
+      const state = new GameState();
+      state.init('p1', 'Alice');
+      state.addPlayer('p2', 'Bob');
+      state.setReady('p1', true);
+      state.setReady('p2', true);
+      state.start();
+
+      const currentPlayer = state.players[state.currentPlayerIndex];
+      const wildCard = currentPlayer.cards.find(c => c.isWild);
+      if (wildCard) {
+        let result = state.playCard(currentPlayer.id, wildCard.id, null);
+        assert(!result.success);
+        assertEqual(result.reason, 'color_required');
+
+        result = state.playCard(currentPlayer.id, wildCard.id, 'blue');
+        assert(result.success);
+      }
+    });
+
+    test('GameState - drawCard works', () => {
+      const state = new GameState();
+      state.init('p1', 'Alice');
+      state.addPlayer('p2', 'Bob');
+      state.setReady('p1', true);
+      state.setReady('p2', true);
+      state.start();
+
+      const currentPlayer = state.players[state.currentPlayerIndex];
+      const cardCount = currentPlayer.cards.length;
+      state.drawCard(currentPlayer.id);
+      assert(currentPlayer.cards.length >= cardCount);
+    });
+
+    test('GameState - +2 penalty flow', () => {
+      const state = new GameState();
+      state.init('p1', 'Alice');
+      state.players[0].isReady = true;
+      state.addPlayer('p2', 'Bob');
+      state.players[1].isReady = true;
+      state.start();
+
+      const currentIdx = state.currentPlayerIndex;
+      const currentPlayer = state.players[currentIdx];
+      const cc = state.currentCard;
+
+      const playableDraw2 = currentPlayer.cards.find(c =>
+        c.type === CARD_TYPES.DRAW_TWO &&
+        GameRules.canPlayCard(c, cc, state.selectedColor, currentPlayer.cards)
+      );
+
+      if (playableDraw2) {
+        const result = state.playCard(currentPlayer.id, playableDraw2.id, null);
+        assert(result.success);
+        assertEqual(result.action, 'penalty');
+        assert(state.mustDraw);
+        assertEqual(state.pendingDrawCount, 2);
+
+        const penalizedPlayer = state.players[state.currentPlayerIndex];
+        const drawResult = state.drawCard(penalizedPlayer.id);
+        assert(drawResult.success, 'drawCard failed: ' + (drawResult.reason || ''));
+        assertEqual(drawResult.action, 'draw_and_skip');
+        assert(!state.mustDraw);
+      } else {
+        // Force a draw2 card into current player's hand that matches the current card
+        const matchingColor = cc.isWild ? 'red' : cc.color;
+        const forcedDraw2 = new Card(CARD_TYPES.DRAW_TWO, matchingColor);
+        currentPlayer.cards.push(forcedDraw2);
+
+        const result = state.playCard(currentPlayer.id, forcedDraw2.id, null);
+        assert(result.success, 'playCard: ' + (result.reason || ''));
+        assertEqual(result.action, 'penalty');
+        assert(state.mustDraw);
+        assertEqual(state.pendingDrawCount, 2);
+
+        const penalizedPlayer = state.players[state.currentPlayerIndex];
+        const drawResult = state.drawCard(penalizedPlayer.id);
+        assert(drawResult.success, 'drawCard failed: ' + (drawResult.reason || ''));
+        assertEqual(drawResult.action, 'draw_and_skip');
+        assert(!state.mustDraw);
+      }
+    });
+
+    test('GameState - UNO call with 1 card succeeds', () => {
+      const state = new GameState();
+      state.init('p1', 'Alice');
+      state.players[0].isReady = true;
+      state.addPlayer('p2', 'Bob');
+      state.players[1].isReady = true;
+      state.start();
+
+      const p1 = state.players[0];
+      p1.cards.length = 1;
+
+      const result = state.callUno('p1');
+      assert(result.success);
+      assert(state.unoCalled['p1']);
+    });
+
+    test('GameState - UNO call with >2 cards rejected', () => {
+      const state = new GameState();
+      state.init('p1', 'Alice');
+      state.players[0].isReady = true;
+      state.addPlayer('p2', 'Bob');
+      state.players[1].isReady = true;
+      state.start();
+
+      const result = state.callUno('p1');
+      assert(!result.success);
+    });
+
+    test('GameState - Full game ends with winner', () => {
+      const state = new GameState();
+      state.init('p1', 'Alice');
+      state.players[0].isReady = true;
+      state.addPlayer('p2', 'Bob');
+      state.players[1].isReady = true;
+      state.start();
+
+      const p1Cards = state.players[0].cards;
+      while (state.phase === GAME_PHASES.PLAYING) {
+        const cp = state.players[state.currentPlayerIndex];
+        const playable = GameRules.getPlayableCards(cp.cards, state.currentCard, state.selectedColor);
+        if (playable.length > 0 && !state.mustDraw) {
+          const card = playable[0];
+          const color = card.isWild ? 'red' : null;
+          state.playCard(cp.id, card.id, color);
+        } else {
+          state.drawCard(cp.id);
+        }
+      }
+
+      assertEqual(state.phase, GAME_PHASES.FINISHED);
+      assert(state.winner !== null);
+    });
+
+    // ============================
+    // Scoring Tests
+    // ============================
+    test('Scoring - init and get scores', () => {
+      const scoring = new Scoring();
+      scoring.initPlayers(['p1', 'p2']);
+      assertEqual(scoring.getScore('p1'), 0);
+      assertEqual(scoring.getScore('p2'), 0);
+    });
+
+    test('Scoring - add round scores', () => {
+      const scoring = new Scoring();
+      scoring.initPlayers(['p1', 'p2']);
+      scoring.addRound({ p1: 50, p2: 30 });
+      assertEqual(scoring.getScore('p1'), 50);
+      assertEqual(scoring.getScore('p2'), 30);
+    });
+
+    test('Scoring - getRanking order', () => {
+      const scoring = new Scoring();
+      scoring.initPlayers(['p1', 'p2', 'p3']);
+      scoring.addRound({ p1: 50, p2: 100, p3: 75 });
+      const ranking = scoring.getRanking();
+      assertEqual(ranking[0].id, 'p2');
+      assertEqual(ranking[0].score, 100);
+      assertEqual(ranking[1].id, 'p3');
+      assertEqual(ranking[2].id, 'p1');
+    });
+
+    test('Scoring - getLeader', () => {
+      const scoring = new Scoring();
+      scoring.initPlayers(['p1', 'p2']);
+      scoring.addRound({ p1: 100, p2: 50 });
+      assertEqual(scoring.getLeader(), 'p1');
+    });
+
+    // ============================
+    // BotAI Tests
+    // ============================
+    test('BotAI - chooses a card from playable', () => {
+      const bot = new BotAI('medium');
+      const hand = [new Card(CARD_TYPES.NUMBER, 'red', 5), new Card(CARD_TYPES.SKIP, 'blue')];
+      const card = bot.chooseCard(hand, new Card(CARD_TYPES.NUMBER, 'red', 7), null);
+      assert(card !== null);
+    });
+
+    test('BotAI - returns null for no playable cards', () => {
+      const bot = new BotAI('medium');
+      const hand = [new Card(CARD_TYPES.NUMBER, 'blue', 3)];
+      const card = bot.chooseCard(hand, new Card(CARD_TYPES.NUMBER, 'red', 7), null);
+      assert(card === null);
+    });
+
+    test('BotAI - chooses color with most cards', () => {
+      const bot = new BotAI('medium');
+      const hand = [
+        new Card(CARD_TYPES.NUMBER, 'red', 1),
+        new Card(CARD_TYPES.NUMBER, 'red', 2),
+        new Card(CARD_TYPES.NUMBER, 'blue', 5)
+      ];
+      const color = bot.chooseColor(hand);
+      assertEqual(color, 'red');
+    });
+
+    test('BotAI - shouldCallUno when 1 card', () => {
+      const bot = new BotAI('medium');
+      const hand = [new Card(CARD_TYPES.NUMBER, 'red', 5)];
+      assert(bot.shouldCallUno(hand));
+    });
+
+    // ============================
+    // Constants Tests
+    // ============================
+    test('Constants - COLORS has all colors', () => {
+      assert(COLORS.RED !== undefined);
+      assert(COLORS.BLUE !== undefined);
+      assert(COLORS.GREEN !== undefined);
+      assert(COLORS.YELLOW !== undefined);
+    });
+
+    test('Constants - CARD_TYPES all defined', () => {
+      assert(CARD_TYPES.NUMBER !== undefined);
+      assert(CARD_TYPES.SKIP !== undefined);
+      assert(CARD_TYPES.REVERSE !== undefined);
+      assert(CARD_TYPES.DRAW_TWO !== undefined);
+      assert(CARD_TYPES.WILD !== undefined);
+      assert(CARD_TYPES.WILD_DRAW_FOUR !== undefined);
+    });
+
+    test('Constants - Game phases defined', () => {
+      assert(GAME_PHASES.WAITING !== undefined);
+      assert(GAME_PHASES.PLAYING !== undefined);
+      assert(GAME_PHASES.FINISHED !== undefined);
+    });
+
+    test('Constants - EVENTS system events defined', () => {
+      assert(EVENTS.CARD_PLAYED !== undefined);
+      assert(EVENTS.CARD_DRAWN !== undefined);
+      assert(EVENTS.TURN_CHANGE !== undefined);
+      assert(EVENTS.GAME_OVER !== undefined);
+      assert(EVENTS.STATE_SYNC !== undefined);
+    });
+
+    // ============================
+    // RoomManager Tests
+    // ============================
+
+    const ROOM_CODE_RE = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]+$/;
+
+    test('RoomManager - generateRoomCode returns 6-char valid code', async () => {
+      eventBus.removeAll();
+      const { RoomManager } = await import('./assets/js/network/RoomManager.js');
+      const rm = new RoomManager();
+      try {
+        const code = rm._generateRoomCode();
+        assertEqual(code.length, 6);
+        assert(ROOM_CODE_RE.test(code));
+        const code2 = rm._generateRoomCode();
+        assert(code !== code2, 'Should generate different codes');
+      } finally {
+        rm.destroy();
+        eventBus.removeAll();
+      }
+    });
+
+    test('RoomManager - getPlayerCount defaults to 0', async () => {
+      eventBus.removeAll();
+      const { RoomManager } = await import('./assets/js/network/RoomManager.js');
+      const rm = new RoomManager();
+      try {
+        assertEqual(rm.getPlayerCount(), 0);
+      } finally {
+        rm.destroy();
+        eventBus.removeAll();
+      }
+    });
+
+    test('RoomManager - getPlayerList returns player array', async () => {
+      eventBus.removeAll();
+      const { RoomManager } = await import('./assets/js/network/RoomManager.js');
+      const rm = new RoomManager();
+      try {
+        rm.players.set('p1', { id: 'p1', name: 'Alice', isHost: true, isReady: false, connected: true });
+        rm.players.set('p2', { id: 'p2', name: 'Bob', isHost: false, isReady: true, connected: true });
+        assertEqual(rm.getPlayerCount(), 2);
+        const list = rm.getPlayerList();
+        assertEqual(list.length, 2);
+        assert(list.some(p => p.name === 'Alice'));
+        assert(list.some(p => p.name === 'Bob'));
+      } finally {
+        rm.destroy();
+        eventBus.removeAll();
+      }
+    });
+
+    test('RoomManager - canStartGame conditions', async () => {
+      eventBus.removeAll();
+      const { RoomManager } = await import('./assets/js/network/RoomManager.js');
+      const rm = new RoomManager();
+      try {
+        assert(!rm.canStartGame(), 'Empty room cannot start');
+        rm.players.set('p1', { id: 'p1', name: 'Alice', isHost: true, isReady: true, connected: true });
+        assert(!rm.canStartGame(), 'Need at least 2 players');
+        rm.players.set('p2', { id: 'p2', name: 'Bob', isHost: false, isReady: false, connected: true });
+        assert(!rm.canStartGame(), 'Need all players ready');
+        rm.players.get('p2').isReady = true;
+        assert(rm.canStartGame(), 'All ready with 2+ players');
+      } finally {
+        rm.destroy();
+        eventBus.removeAll();
+      }
+    });
+
+    test('RoomManager - setReady updates local player state', async () => {
+      eventBus.removeAll();
+      const { RoomManager } = await import('./assets/js/network/RoomManager.js');
+      const rm = new RoomManager();
+      try {
+        rm.playerId = 'p1';
+        rm.players.set('p1', { id: 'p1', name: 'Alice', isHost: true, isReady: false, connected: true });
+        rm.peerConnection.sendEvent = () => {};
+        rm.setReady(true);
+        assert(rm.players.get('p1').isReady);
+        rm.setReady(false);
+        assert(!rm.players.get('p1').isReady);
+      } finally {
+        rm.destroy();
+        eventBus.removeAll();
+      }
+    });
+
+    test('RoomManager - handshake:received adds player', async () => {
+      eventBus.removeAll();
+      const { RoomManager } = await import('./assets/js/network/RoomManager.js');
+      const rm = new RoomManager();
+      try {
+        rm.peerConnection.broadcast = () => {};
+        assertEqual(rm.getPlayerCount(), 0);
+        eventBus.emit('handshake:received', { peerId: 'p2', playerId: 'p2', playerName: 'Bob' });
+        assertEqual(rm.getPlayerCount(), 1);
+        const player = rm.players.get('p2');
+        assert(player);
+        assertEqual(player.name, 'Bob');
+        assert(!player.isHost);
+        assert(!player.isReady);
+        assert(player.connected);
+        eventBus.emit('handshake:received', { peerId: 'p2', playerId: 'p2', playerName: 'Bob' });
+        assertEqual(rm.getPlayerCount(), 1);
+      } finally {
+        rm.destroy();
+        eventBus.removeAll();
+      }
+    });
+
+    test('RoomManager - PLAYER_LEFT removes player', async () => {
+      eventBus.removeAll();
+      const { RoomManager } = await import('./assets/js/network/RoomManager.js');
+      const rm = new RoomManager();
+      try {
+        rm.peerConnection.broadcast = () => {};
+        rm.players.set('p1', { id: 'p1', name: 'Alice', isHost: true, isReady: false, connected: true });
+        rm.players.set('p2', { id: 'p2', name: 'Bob', isHost: false, isReady: false, connected: true });
+        assertEqual(rm.getPlayerCount(), 2);
+        eventBus.emit(EVENTS.PLAYER_LEFT, { id: 'p2' });
+        assertEqual(rm.getPlayerCount(), 1);
+        assert(!rm.players.has('p2'));
+      } finally {
+        rm.destroy();
+        eventBus.removeAll();
+      }
+    });
+
+    test('RoomManager - PLAYER_READY updates player on host', async () => {
+      eventBus.removeAll();
+      const { RoomManager } = await import('./assets/js/network/RoomManager.js');
+      const rm = new RoomManager();
+      try {
+        rm.peerConnection.isHost = true;
+        rm.peerConnection.broadcast = () => {};
+        rm.players.set('p2', { id: 'p2', name: 'Bob', isHost: false, isReady: false, connected: true });
+        eventBus.emit(EVENTS.PLAYER_READY, { playerId: 'p2', isReady: true });
+        assert(rm.players.get('p2').isReady);
+        eventBus.emit(EVENTS.PLAYER_READY, { playerId: 'p2', isReady: false });
+        assert(!rm.players.get('p2').isReady);
+      } finally {
+        rm.destroy();
+        eventBus.removeAll();
+      }
+    });
+
+    test('RoomManager - PLAYER_READY ignored on non-host', async () => {
+      eventBus.removeAll();
+      const { RoomManager } = await import('./assets/js/network/RoomManager.js');
+      const rm = new RoomManager();
+      try {
+        rm.peerConnection.isHost = false;
+        rm.players.set('p2', { id: 'p2', name: 'Bob', isHost: false, isReady: false, connected: true });
+        eventBus.emit(EVENTS.PLAYER_READY, { playerId: 'p2', isReady: true });
+        assert(!rm.players.get('p2').isReady);
+      } finally {
+        rm.destroy();
+        eventBus.removeAll();
+      }
+    });
+
+    // ============================
+    // LobbyUI Tests
+    // ============================
+
+    function setupLobbyContainer() {
+      let app = document.getElementById('app');
+      if (!app) {
+        app = document.createElement('div');
+        app.id = 'app';
+        document.body.appendChild(app);
+      }
+      return app;
+    }
+
+    function teardownLobbyContainer() {
+      const app = document.getElementById('app');
+      if (app) { const parent = app.parentNode; if (parent) parent.removeChild(app); }
+    }
+
+    test('LobbyUI - show renders room code', async () => {
+      eventBus.removeAll();
+      setupLobbyContainer();
+      const { LobbyUI } = await import('./assets/js/ui/LobbyUI.js');
+      const lobby = new LobbyUI();
+      try {
+        lobby.show('ABC123', true, 'p1');
+        const display = document.getElementById('room-code-display');
+        assert(display !== null);
+        assertEqual(display.textContent, 'ABC123');
+        const share = document.getElementById('share-code');
+        assert(share !== null);
+        assertEqual(share.textContent, 'ABC123');
+      } finally {
+        lobby._cleanup();
+        eventBus.removeAll();
+        teardownLobbyContainer();
+      }
+    });
+
+    test('LobbyUI - show sets host and playerId', async () => {
+      eventBus.removeAll();
+      setupLobbyContainer();
+      const { LobbyUI } = await import('./assets/js/ui/LobbyUI.js');
+      const lobby = new LobbyUI();
+      try {
+        lobby.show('XYZ789', false, 'p1');
+        assertEqual(lobby._roomCode, 'XYZ789');
+        assert(!lobby._isHost);
+        assertEqual(lobby._playerId, 'p1');
+      } finally {
+        lobby._cleanup();
+        eventBus.removeAll();
+        teardownLobbyContainer();
+      }
+    });
+
+    test('LobbyUI - addPlayer adds to list', async () => {
+      eventBus.removeAll();
+      setupLobbyContainer();
+      const { LobbyUI } = await import('./assets/js/ui/LobbyUI.js');
+      const lobby = new LobbyUI();
+      try {
+        lobby.show('ABC123', true, 'p1');
+        assertEqual(lobby._players.length, 1);
+        lobby._addPlayer('p2', 'Bob');
+        assertEqual(lobby._players.length, 2);
+        assert(lobby._players.some(p => p.name === 'Bob'));
+        lobby._addPlayer('p2', 'Bob');
+        assertEqual(lobby._players.length, 2);
+      } finally {
+        lobby._cleanup();
+        eventBus.removeAll();
+        teardownLobbyContainer();
+      }
+    });
+
+    test('LobbyUI - removePlayer removes from list', async () => {
+      eventBus.removeAll();
+      setupLobbyContainer();
+      const { LobbyUI } = await import('./assets/js/ui/LobbyUI.js');
+      const lobby = new LobbyUI();
+      try {
+        lobby.show('ABC123', true, 'p1');
+        lobby._addPlayer('p2', 'Bob');
+        lobby._addPlayer('p3', 'Charlie');
+        assertEqual(lobby._players.length, 3);
+        lobby._removePlayer('p2');
+        assertEqual(lobby._players.length, 2);
+        assert(!lobby._players.some(p => p.id === 'p2'));
+      } finally {
+        lobby._cleanup();
+        eventBus.removeAll();
+        teardownLobbyContainer();
+      }
+    });
+
+    test('LobbyUI - updatePlayerReady updates state', async () => {
+      eventBus.removeAll();
+      setupLobbyContainer();
+      const { LobbyUI } = await import('./assets/js/ui/LobbyUI.js');
+      const lobby = new LobbyUI();
+      try {
+        lobby.show('ABC123', true, 'p1');
+        lobby._addPlayer('p2', 'Bob');
+        lobby._updatePlayerReady('p2', true);
+        assert(lobby._players.find(p => p.id === 'p2').isReady);
+        lobby._updatePlayerReady('p2', false);
+        assert(!lobby._players.find(p => p.id === 'p2').isReady);
+      } finally {
+        lobby._cleanup();
+        eventBus.removeAll();
+        teardownLobbyContainer();
+      }
+    });
+
+    test('LobbyUI - empty state shows waiting message', async () => {
+      eventBus.removeAll();
+      setupLobbyContainer();
+      const { LobbyUI } = await import('./assets/js/ui/LobbyUI.js');
+      const lobby = new LobbyUI();
+      try {
+        lobby.show('ABC123', true, 'p1');
+        lobby._players = [];
+        lobby._updatePlayerList();
+        const list = document.getElementById('players-list');
+        assert(list.innerHTML.includes('Waiting for players'));
+      } finally {
+        lobby._cleanup();
+        eventBus.removeAll();
+        teardownLobbyContainer();
+      }
+    });
+
+    test('LobbyUI - player list shows names and ready status', async () => {
+      eventBus.removeAll();
+      setupLobbyContainer();
+      const { LobbyUI } = await import('./assets/js/ui/LobbyUI.js');
+      const lobby = new LobbyUI();
+      try {
+        lobby.show('ABC123', true, 'p1');
+        lobby._addPlayer('p2', 'Bob');
+        lobby._updatePlayerReady('p2', true);
+        const list = document.getElementById('players-list');
+        const html = list.innerHTML;
+        assert(html.includes('Bob'), 'Show player name');
+        assert(html.includes('✓ Ready'), 'Show ready checkmark');
+      } finally {
+        lobby._cleanup();
+        eventBus.removeAll();
+        teardownLobbyContainer();
+      }
+    });
+
+    test('LobbyUI - start button enabled for any player when all ready', async () => {
+      eventBus.removeAll();
+      setupLobbyContainer();
+      const { LobbyUI } = await import('./assets/js/ui/LobbyUI.js');
+      const lobby = new LobbyUI();
+      try {
+        lobby.show('ABC123', false, 'p2');
+        lobby._addPlayer('p1', 'Alice');
+        lobby._updatePlayerReady('p1', true);
+        lobby._updatePlayerReady('p2', true);
+        const btn = document.getElementById('btn-start-game');
+        assert(!btn.disabled, 'Non-host button should be enabled when all ready');
+      } finally {
+        lobby._cleanup();
+        eventBus.removeAll();
+        teardownLobbyContainer();
+      }
+    });
+
+    test('LobbyUI - start button enabled for host when all ready', async () => {
+      eventBus.removeAll();
+      setupLobbyContainer();
+      const { LobbyUI } = await import('./assets/js/ui/LobbyUI.js');
+      const lobby = new LobbyUI();
+      try {
+        lobby.show('ABC123', true, 'p1');
+        lobby._addPlayer('p2', 'Bob');
+        lobby._updatePlayerReady('p2', true);
+        lobby._updatePlayerReady('p1', true);
+        const btn = document.getElementById('btn-start-game');
+        assert(!btn.disabled, 'Host with all ready should have enabled button');
+      } finally {
+        lobby._cleanup();
+        eventBus.removeAll();
+        teardownLobbyContainer();
+      }
+    });
+
+    test('LobbyUI - start button disabled with not all ready', async () => {
+      eventBus.removeAll();
+      setupLobbyContainer();
+      const { LobbyUI } = await import('./assets/js/ui/LobbyUI.js');
+      const lobby = new LobbyUI();
+      try {
+        lobby.show('ABC123', true, 'p1');
+        lobby._addPlayer('p2', 'Bob');
+        lobby._updatePlayerReady('p1', true);
+        const btn = document.getElementById('btn-start-game');
+        assert(btn.disabled, 'Button disabled when not all ready');
+      } finally {
+        lobby._cleanup();
+        eventBus.removeAll();
+        teardownLobbyContainer();
+      }
+    });
+
+    // Run all tests
+    runTests().then(() => {
+      try {
+        navigator.sendBeacon('/results', JSON.stringify({ passed, failed, total: passed + failed }));
+      } catch(e) {
+        try {
+          var img = new Image();
+          img.src = '/results?' + passed + ',' + failed;
+        } catch(e2) {}
+      }
+    });
+  </script>
+</body>
+</html>
