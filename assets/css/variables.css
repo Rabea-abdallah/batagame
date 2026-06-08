@@ -1,0 +1,131 @@
+:root {
+  /* Colors */
+  --color-bg: #1a1a2e;
+  --color-bg-secondary: #16213e;
+  --color-bg-tertiary: #0f3460;
+  --color-bg-card: #1e2744;
+  --color-surface: #2a2a4a;
+  --color-surface-hover: #3a3a5a;
+
+  --color-text: #e8e8e8;
+  --color-text-secondary: #a0a0b8;
+  --color-text-muted: #6c6c8a;
+
+  --color-primary: #e94560;
+  --color-primary-hover: #ff6b81;
+  --color-primary-dark: #c0392b;
+
+  --color-accent: #3498db;
+  --color-accent-hover: #5dade2;
+
+  --color-success: #2ecc71;
+  --color-warning: #f39c12;
+  --color-error: #e74c3c;
+  --color-info: #3498db;
+
+  /* Card Colors */
+  --card-red: #E74C3C;
+  --card-red-dark: #c0392b;
+  --card-blue: #3498DB;
+  --card-blue-dark: #2980b9;
+  --card-green: #2ECC71;
+  --card-green-dark: #27ae60;
+  --card-yellow: #F1C40F;
+  --card-yellow-dark: #d4ac0d;
+  --card-wild: #2C3E50;
+  --card-wild-dark: #1a252f;
+
+  /* Sizes */
+  --card-width: 80px;
+  --card-height: 120px;
+  --card-radius: 10px;
+  --card-small-width: 64px;
+  --card-small-height: 96px;
+
+  --header-height: 56px;
+  --hand-height: 180px;
+  --action-height: 60px;
+
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+
+  /* Typography */
+  --font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+  --font-mono: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  --font-size-xs: 11px;
+  --font-size-sm: 13px;
+  --font-size-md: 16px;
+  --font-size-lg: 20px;
+  --font-size-xl: 28px;
+  --font-size-2xl: 40px;
+  --font-size-3xl: 56px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 28px rgba(0,0,0,0.5);
+  --shadow-xl: 0 16px 48px rgba(0,0,0,0.6);
+  --shadow-card: 0 4px 12px rgba(0,0,0,0.4);
+  --shadow-card-hover: 0 8px 28px rgba(0,0,0,0.55);
+  --shadow-glow-green: 0 0 20px rgba(46, 204, 113, 0.3);
+  --shadow-glow-blue: 0 0 20px rgba(52, 152, 219, 0.3);
+
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+  --transition-slow: 400ms ease;
+
+  /* Z-index */
+  --z-base: 1;
+  --z-dropdown: 100;
+  --z-modal: 1000;
+  --z-notification: 2000;
+  --z-particle: 9999;
+  --z-card-flying: 10050;
+
+  /* Card motion (slower, readable on phone & desktop) */
+  --anim-card-fly: 920ms;
+  --anim-card-draw: 880ms;
+  --anim-card-draw-reveal: 820ms;
+  --anim-card-draw-flip: 420ms;
+  --anim-card-play: 940ms;
+  --anim-card-deal: 520ms;
+  --anim-card-reveal: 380ms;
+  --anim-card-leave: 320ms;
+  --anim-card-discard-enter: 400ms;
+  --anim-card-stagger: 150ms;
+  --anim-card-lift: 36px;
+}
+
+/* Phones — slightly slower arcs for clarity */
+@media (max-width: 768px), (hover: none) and (pointer: coarse) {
+  :root {
+    --anim-card-fly: 1020ms;
+    --anim-card-draw: 980ms;
+    --anim-card-play: 1040ms;
+    --anim-card-deal: 580ms;
+    --anim-card-reveal: 420ms;
+    --anim-card-leave: 360ms;
+    --anim-card-stagger: 170ms;
+    --anim-card-lift: 28px;
+  }
+}
+
+/* Landscape phone / short viewport */
+@media (max-height: 500px) and (orientation: landscape) {
+  :root {
+    --anim-card-fly: 880ms;
+    --anim-card-draw: 860ms;
+    --anim-card-play: 900ms;
+    --anim-card-lift: 22px;
+    --hand-height: 100px;
+  }
+}
